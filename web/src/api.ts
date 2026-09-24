@@ -14,13 +14,14 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 }
 
 export const api = {
-  status: () => request<{ bootId: string; googleConfigured: boolean; timeZone: string }>('GET', '/api/status'),
+  status: () => request<{ bootId: string; googleConfigured: boolean; timeZone: string; addresses: string[] }>('GET', '/api/status'),
   weather: () => request<Weather | null>('GET', '/api/weather'),
 
   accounts: () => request<Account[]>('GET', '/api/accounts'),
   removeAccount: (id: string) => request('DELETE', `/api/accounts/${id}`),
   addCalDav: (body: { label?: string; serverUrl?: string; username: string; password: string }) => request('POST', '/api/accounts/caldav', body),
-  googleStart: () => request<{ url: string }>('GET', '/api/oauth/google/start'),
+  googleStart: (person = '') => request<{ url: string }>('GET', `/api/oauth/google/start?person=${encodeURIComponent(person)}`),
+  saveGoogleClient: (clientId: string, clientSecret: string) => request('PUT', '/api/google-client', { clientId, clientSecret }),
   googleCode: (url: string) => request('POST', '/api/oauth/google/code', { url }),
   sync: () => request('POST', '/api/sync'),
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api.ts'
 import { usePolled } from '../hooks.ts'
+import { AccountList, CalendarList, GoogleConnect, ICloudConnect, useRunner } from './Connect.tsx'
 import type { Calendar, Settings } from '../../../shared/types.ts'
 
 interface Props {
@@ -16,27 +17,13 @@ export function SettingsPanel({ settings, calendars, onSettings, onChanged, onCl
   const accounts = usePolled(api.accounts, 30_000)
   const status = usePolled(api.status, 60_000)
   const lists = usePolled(api.lists, 60_000)
-  const [icloud, setIcloud] = useState({ label: '', username: '', password: '', serverUrl: '' })
-  const [googlePaste, setGooglePaste] = useState('')
-  const [googleUrl, setGoogleUrl] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   const [newList, setNewList] = useState('')
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true)
-    try {
-      await fn()
-      accounts.reload()
-      lists.reload()
-      onChanged()
-      return true
-    } catch (err) {
-      onError((err as Error).message)
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, run } = useRunner(onError, () => {
+    accounts.reload()
+    status.reload()
+    lists.reload()
+    onChanged()
+  })
 
   const save = async (patch: Partial<Settings>) => {
     try {
@@ -56,94 +43,25 @@ export function SettingsPanel({ settings, calendars, onSettings, onChanged, onCl
           </button>
         </div>
         <p className="hint">
-          Tip: it's easier to set this up from a phone or laptop on the same Wi-Fi — open <strong>http://{location.host}</strong>.
+          Tip: it's easier to change these from a laptop or phone on the same Wi-Fi — open <strong>{status.data?.addresses[0] ?? `http://${location.host}`}</strong>.
         </p>
 
         <section>
           <h3>Connected calendars</h3>
-          <ul className="accounts">
-            {accounts.data?.map((a) => (
-              <li key={a.id}>
-                <div>
-                  <strong>{a.label}</strong> <span className="muted">{a.provider === 'caldav' ? 'iCloud / CalDAV' : a.provider === 'google' ? 'Google' : 'Built in'}</span>
-                  {a.lastError ? <div className="error-text">⚠ {a.lastError}</div> : a.lastSyncedAt && <div className="muted">Synced {new Date(a.lastSyncedAt).toLocaleTimeString('en-AU')}</div>}
-                </div>
-                {a.provider !== 'local' && (
-                  <button className="text-btn" disabled={busy} onClick={() => confirm(`Disconnect ${a.label}?`) && run(() => api.removeAccount(a.id))}>
-                    Disconnect
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-
+          <AccountList accounts={accounts.data ?? []} run={run} busy={busy} />
           <details>
             <summary>Add an iPhone (iCloud) calendar</summary>
-            <p className="hint">
-              Use your Apple ID email and an <strong>app-specific password</strong> from account.apple.com → Sign-In and Security → App-Specific Passwords. Your normal Apple password won't work.
-            </p>
-            <form
-              className="form"
-              onSubmit={async (e) => {
-                e.preventDefault()
-                if (await run(() => api.addCalDav(icloud))) setIcloud({ label: '', username: '', password: '', serverUrl: '' })
-              }}
-            >
-              <input placeholder="Whose is it? e.g. Jack" value={icloud.label} onChange={(e) => setIcloud({ ...icloud, label: e.target.value })} />
-              <input placeholder="Apple ID email" type="email" autoCapitalize="off" value={icloud.username} onChange={(e) => setIcloud({ ...icloud, username: e.target.value })} />
-              <input placeholder="App-specific password (xxxx-xxxx-xxxx-xxxx)" type="password" value={icloud.password} onChange={(e) => setIcloud({ ...icloud, password: e.target.value })} />
-              <input placeholder="Server (leave blank for iCloud)" type="url" value={icloud.serverUrl} onChange={(e) => setIcloud({ ...icloud, serverUrl: e.target.value })} />
-              <button className="primary-btn" disabled={busy}>
-                {busy ? 'Connecting…' : 'Connect'}
-              </button>
-            </form>
+            <ICloudConnect run={run} busy={busy} />
           </details>
-
           <details>
             <summary>Add a Google calendar</summary>
-            {status.data && !status.data.googleConfigured ? (
-              <p className="hint">Google needs a one-off setup first (a free Google Cloud "OAuth client"). Follow docs/03-calendars.md, then restart the planner.</p>
-            ) : (
-              <div className="form">
-                <button className="primary-btn" disabled={busy} onClick={async () => setGoogleUrl((await api.googleStart()).url)}>
-                  1. Get sign-in link
-                </button>
-                {googleUrl && (
-                  <>
-                    <a className="link-box" href={googleUrl} target="_blank" rel="noreferrer">
-                      2. Open this link and sign in with Google
-                    </a>
-                    <p className="hint">
-                      If you're doing this on the wall screen itself, you'll come straight back here. On another device the last page will say it can't connect — copy that page's full address and paste it below.
-                    </p>
-                    <input placeholder="Paste the http://localhost… address here" value={googlePaste} onChange={(e) => setGooglePaste(e.target.value)} />
-                    <button className="primary-btn" disabled={busy || !googlePaste} onClick={async () => (await run(() => api.googleCode(googlePaste))) && (setGooglePaste(''), setGoogleUrl(null))}>
-                      3. Finish
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+            <GoogleConnect configured={Boolean(status.data?.googleConfigured)} run={run} busy={busy} onError={onError} />
           </details>
         </section>
 
         <section>
           <h3>Calendars on the screen</h3>
-          <ul className="cal-settings">
-            {calendars.map((c) => (
-              <li key={c.id}>
-                <label className="toggle">
-                  <input type="checkbox" checked={c.enabled} onChange={(e) => run(() => api.updateCalendar(c.id, { enabled: e.target.checked }))} />
-                </label>
-                <input type="color" value={c.color} onChange={(e) => run(() => api.updateCalendar(c.id, { color: e.target.value }))} />
-                <span className="cal-name">
-                  {c.name}
-                  {!c.writable && <span className="muted"> (read-only)</span>}
-                </span>
-                <input className="person-input" defaultValue={c.person} placeholder="Person" onBlur={(e) => e.target.value !== c.person && run(() => api.updateCalendar(c.id, { person: e.target.value }))} />
-              </li>
-            ))}
-          </ul>
+          <CalendarList calendars={calendars} run={run} />
         </section>
 
         <section>
@@ -219,6 +137,13 @@ export function SettingsPanel({ settings, calendars, onSettings, onChanged, onCl
               <input type="time" value={settings.nightEnd} onChange={(e) => save({ nightEnd: e.target.value })} />
             </label>
           </div>
+        </section>
+
+        <section>
+          <h3>Setup</h3>
+          <button className="secondary-btn" onClick={() => save({ setupDone: false }).then(onClose)}>
+            Run the setup guide again
+          </button>
         </section>
       </div>
     </div>

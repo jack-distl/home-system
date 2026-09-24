@@ -78,6 +78,8 @@ export interface Settings {
   /** 24h "HH:MM" window when the screen should be dark (handled by deploy/display-schedule.sh). Empty = never. */
   nightStart: string
   nightEnd: string
+  /** The first-run setup screen has been completed (or skipped). */
+  setupDone: boolean
 }
 
 export interface Artwork {

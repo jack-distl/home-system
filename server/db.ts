@@ -95,11 +95,12 @@ export const defaultSettings: Settings = {
   artQuery: 'landscape',
   nightStart: '22:30',
   nightEnd: '06:00',
+  setupDone: false,
 }
 
 export function getSettings(): Settings {
   const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]
-  const stored = Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value)]))
+  const stored = Object.fromEntries(rows.filter((r) => r.key in defaultSettings).map((r) => [r.key, JSON.parse(r.value)]))
   return { ...defaultSettings, ...stored }
 }
 

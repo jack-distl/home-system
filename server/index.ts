@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
@@ -7,7 +8,7 @@ import { db, getSettings, newId, saveSettings, seed } from './db.ts'
 import { artCacheDir, listArt, refreshArtCache } from './art.ts'
 import { getWeather } from './weather.ts'
 import { createEvent, deleteEvent, forgetProvider, listEvents, startBackgroundSync, syncAccount, syncAll, updateEvent } from './sync.ts'
-import { exchangeGoogleCode, googleAuthUrl, googleConfigured } from './providers/google.ts'
+import { exchangeGoogleCode, googleAuthUrl, googleConfigured, saveGoogleClient } from './providers/google.ts'
 import { CalDavProvider, ICLOUD_SERVER } from './providers/caldav.ts'
 import { ProviderError } from './providers/types.ts'
 import type { Account, Calendar, EventInput, List, ListItem, Settings } from '../shared/types.ts'
@@ -27,7 +28,16 @@ app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
 
 // ---------- Status ----------
 
-app.get('/api/status', async () => ({ bootId, googleConfigured: googleConfigured(), timeZone: config.timeZone }))
+/** Addresses a phone or laptop on the home Wi-Fi can use to reach this planner. */
+function addresses() {
+  const ips = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((i) => i && i.family === 'IPv4' && !i.internal)
+    .map((i) => `http://${i!.address}:${config.port}`)
+  return [`http://${os.hostname()}.local:${config.port}`, ...ips]
+}
+
+app.get('/api/status', async () => ({ bootId, googleConfigured: googleConfigured(), timeZone: config.timeZone, addresses: addresses() }))
 app.get('/api/weather', async () => getWeather())
 
 // ---------- Accounts & calendars ----------
@@ -59,17 +69,25 @@ app.post<{ Body: { label?: string; serverUrl?: string; username: string; passwor
 // Google sign-in. If the consent screen was opened on the touchscreen itself, Google redirects straight back
 // to /callback. From a phone or laptop the redirect to "localhost" fails, so the person pastes that URL into
 // Settings instead and it is posted to /code.
-const pendingStates = new Set<string>()
+// Sign-in attempts in progress: state → whose calendar it is.
+const pendingStates = new Map<string, string>()
 
-app.get('/api/oauth/google/start', async () => {
-  if (!googleConfigured()) throw new ProviderError('Google is not set up yet: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env (see docs/03-calendars.md)', 400)
+app.put<{ Body: { clientId: string; clientSecret: string } }>('/api/google-client', async (req) => {
+  saveGoogleClient(req.body.clientId ?? '', req.body.clientSecret ?? '')
+  return { ok: true }
+})
+
+app.get<{ Querystring: { person?: string } }>('/api/oauth/google/start', async (req) => {
+  if (!googleConfigured()) throw new ProviderError('Google is not set up yet — paste your Client ID and Client secret first', 400)
   const state = randomUUID()
-  pendingStates.add(state)
+  pendingStates.set(state, req.query.person?.trim() ?? '')
   return { url: googleAuthUrl(state) }
 })
 
 async function finishGoogle(code: string, state: string | null) {
-  if (!state || !pendingStates.delete(state)) throw new ProviderError('That sign-in link has expired. Start again from Settings.', 400)
+  const person = state ? pendingStates.get(state) : undefined
+  if (!state || person === undefined) throw new ProviderError('That sign-in link has expired. Tap "Get sign-in link" and try again.', 400)
+  pendingStates.delete(state)
   const { credentials, email } = await exchangeGoogleCode(code)
   const existing = db.prepare("SELECT id FROM accounts WHERE provider = 'google' AND label = ?").get(email) as { id: string } | undefined
   const id = existing?.id ?? newId()
@@ -80,15 +98,17 @@ async function finishGoogle(code: string, state: string | null) {
     db.prepare("INSERT INTO accounts (id, provider, label, credentials) VALUES (?, 'google', ?, ?)").run(id, email, JSON.stringify(credentials))
   }
   await syncAccount(id)
+  if (person) db.prepare('UPDATE calendars SET person = ? WHERE account_id = ?').run(person, id)
 }
 
 app.get<{ Querystring: { code?: string; state?: string; error?: string } }>('/api/oauth/google/callback', async (req, reply) => {
-  if (req.query.error || !req.query.code) return reply.redirect(`/?settings=1&error=${encodeURIComponent(req.query.error ?? 'Google sign-in cancelled')}`)
+  const back = getSettings().setupDone ? '/?settings=1' : '/?'
+  if (req.query.error || !req.query.code) return reply.redirect(`${back}&error=${encodeURIComponent(req.query.error ?? 'Google sign-in cancelled')}`)
   try {
     await finishGoogle(req.query.code, req.query.state ?? null)
-    return reply.redirect('/?settings=1')
+    return reply.redirect(back)
   } catch (err) {
-    return reply.redirect(`/?settings=1&error=${encodeURIComponent((err as Error).message)}`)
+    return reply.redirect(`${back}&error=${encodeURIComponent((err as Error).message)}`)
   }
 })
 

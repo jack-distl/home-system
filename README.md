@@ -12,6 +12,7 @@ A wall-mounted family planner for a touchscreen, like a [Skylight Calendar Max](
 
 ## Start here
 
+0. [**Start here: tick-box setup guide**](docs/00-start-here.md), written for people with no tech experience
 1. [**Shopping list**](docs/01-shopping-list.md): what to buy in Perth and where (~$750–900 total)
 2. [**Set up the Pi and mount the screen**](docs/02-setup.md)
 3. [**Connect your calendars**](docs/03-calendars.md): iCloud and Google

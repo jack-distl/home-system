@@ -1,5 +1,7 @@
 # 2. Set up the Pi and mount the screen
 
+> This is the reference version. For a tick-box walkthrough with "what you should see" at every step, use [**Start here**](00-start-here.md).
+
 Allow about an hour. Do it on the kitchen bench first and put it on the wall once everything works.
 
 ## Step 1: Prepare the microSD card (on your laptop, ~15 min)
@@ -42,14 +44,6 @@ Type `yes` if asked, then the password you chose. Now paste this one line:
 curl -fsSL https://raw.githubusercontent.com/jack-distl/home-system/main/deploy/install.sh | bash
 ```
 
-> The repository is private, so `curl` can't read it without logging in. Use this instead:
->
-> ```bash
-> sudo apt-get install -y git gh && gh auth login   # choose GitHub.com → HTTPS → log in with a browser code
-> git clone https://github.com/jack-distl/home-system.git ~/home-system
-> bash ~/home-system/deploy/install.sh
-> ```
-
 The script:
 - installs Node.js and Chromium
 - builds the app
@@ -58,13 +52,7 @@ The script:
 - sets the clock to Perth time
 - schedules the night-time screen-off and a nightly update
 
-When it finishes:
-
-```bash
-sudo reboot
-```
-
-The Pi restarts straight into the planner, full-screen. 🎉
+When it finishes, the Pi restarts by itself. About a minute later the touchscreen shows **"Let's set up your planner"**: open the address it shows on your laptop and follow the guide to connect your calendars.
 
 From any phone or laptop on your Wi-Fi you can now open **http://planner.local:3000**. It's the same app, handy for adding to the shopping list from the couch or doing setup with a real keyboard.
 

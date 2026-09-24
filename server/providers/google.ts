@@ -1,4 +1,5 @@
 import { config } from '../config.ts'
+import { db } from '../db.ts'
 import { ProviderError, type EventFields, type Provider, type RemoteCalendar, type RemoteEvent } from './types.ts'
 
 // Talks to the Google Calendar REST API directly with fetch, so we don't need the (very large) googleapis package.
@@ -12,13 +13,29 @@ export interface GoogleCredentials {
   expiresAt?: number
 }
 
+/** The Google "OAuth client" comes from .env if set there, otherwise from what was pasted into the setup screen. */
+function client() {
+  if (config.google.clientId && config.google.clientSecret) return { clientId: config.google.clientId, clientSecret: config.google.clientSecret }
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'googleClient'").get() as { value: string } | undefined
+  return row ? (JSON.parse(row.value) as { clientId: string; clientSecret: string }) : { clientId: '', clientSecret: '' }
+}
+
 export function googleConfigured() {
-  return Boolean(config.google.clientId && config.google.clientSecret)
+  const { clientId, clientSecret } = client()
+  return Boolean(clientId && clientSecret)
+}
+
+export function saveGoogleClient(clientId: string, clientSecret: string) {
+  clientId = clientId.trim()
+  clientSecret = clientSecret.trim()
+  if (!clientId.endsWith('.apps.googleusercontent.com')) throw new ProviderError('That doesn\'t look like a Client ID — it should end in .apps.googleusercontent.com', 400)
+  if (clientSecret.length < 10) throw new ProviderError('That doesn\'t look like a Client secret', 400)
+  db.prepare("INSERT INTO settings (key, value) VALUES ('googleClient', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify({ clientId, clientSecret }))
 }
 
 export function googleAuthUrl(state: string) {
   const params = new URLSearchParams({
-    client_id: config.google.clientId,
+    client_id: client().clientId,
     redirect_uri: config.google.redirectUri,
     response_type: 'code',
     scope: SCOPE,
@@ -34,7 +51,7 @@ async function tokenRequest(body: Record<string, string>) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: config.google.clientId, client_secret: config.google.clientSecret, ...body }),
+    body: new URLSearchParams({ client_id: client().clientId, client_secret: client().clientSecret, ...body }),
   })
   const json = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string }
   if (!res.ok || !json.access_token) {

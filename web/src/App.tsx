@@ -10,6 +10,7 @@ import { ListsPanel } from './components/ListsPanel.tsx'
 import { EventEditor, type EditorState } from './components/EventEditor.tsx'
 import { SettingsPanel } from './components/SettingsPanel.tsx'
 import { OnScreenKeyboard } from './components/OnScreenKeyboard.tsx'
+import { SetupWizard } from './components/SetupWizard.tsx'
 import type { Settings } from '../../shared/types.ts'
 
 type View = 'week' | 'month'
@@ -23,7 +24,11 @@ export function App() {
   const [showSettings, setShowSettings] = useState(params.has('settings'))
   const [toast, setToast] = useState<string | null>(params.get('error'))
 
-  const settings = usePolled<Settings>(api.settings, 5 * 60_000)
+  // Check often while setup is unfinished, so the wall switches over as soon as it's completed on a laptop.
+  const [settingsInterval, setSettingsInterval] = useState(5 * 60_000)
+  const settings = usePolled<Settings>(api.settings, settingsInterval)
+  const inSetup = settings.data?.setupDone === false
+  useEffect(() => setSettingsInterval(inSetup ? 5_000 : 5 * 60_000), [inSetup])
   const calendars = usePolled(api.calendars, 5 * 60_000)
 
   // Fetch the visible range with a margin either side so paging feels instant.
@@ -41,13 +46,15 @@ export function App() {
 
   // ----- Idle → art mode -----
   const lastTouch = useRef(Date.now())
+  const inSetupRef = useRef(inSetup)
+  inSetupRef.current = inSetup
   useEffect(() => {
     const touched = () => (lastTouch.current = Date.now())
     window.addEventListener('pointerdown', touched, true)
     window.addEventListener('keydown', touched, true)
     const t = setInterval(() => {
       const idleMs = (settings.data?.idleSeconds ?? 120) * 1000
-      if (Date.now() - lastTouch.current > idleMs) {
+      if (Date.now() - lastTouch.current > idleMs && !inSetupRef.current) {
         setMode('art')
         setEditor(null)
         setShowSettings(false)
@@ -158,6 +165,17 @@ export function App() {
         <div className="toast" onClick={() => setToast(null)}>
           {toast}
         </div>
+      )}
+      {inSetup && (
+        <SetupWizard
+          calendars={cals}
+          onChanged={refreshAll}
+          onDone={() => {
+            settings.reload()
+            refreshAll()
+          }}
+          onError={setToast}
+        />
       )}
       <OnScreenKeyboard />
       {mode === 'art' && settings.data && <ArtMode settings={settings.data} onWake={wake} />}

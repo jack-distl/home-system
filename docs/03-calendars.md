@@ -13,7 +13,7 @@ The name shows as a small label on each event, and the colour is how you tell pe
 
 > **Tip: make a shared "Family" calendar.** Create it in iCloud (Calendar app → Add Calendar → share with each other) or in Google. Put joint things there. Each person's work or personal calendar stays separate but can still show on the wall.
 
-Do this from a laptop or phone at **http://planner.local:3000 → ⚙ Settings**. It's much easier with a real keyboard.
+**The easy way:** the first time the planner starts, it shows a setup guide that walks you through all of this, with links straight to the right Google and Apple pages. Do it from a laptop at **http://planner.local:3000**. To run it again later, open ⚙ Settings → *Run the setup guide again*. This page is the same information for reference.
 
 ---
 
@@ -53,15 +53,7 @@ Google makes every app register first. It's free and you only do it once.
    - **Application type:** Web application
    - **Authorised redirect URIs:** `http://localhost:3000/api/oauth/google/callback`
    - Create, then copy the **Client ID** and **Client secret**.
-6. Put them on the Pi:
-   ```bash
-   ssh family@planner.local
-   nano ~/home-system/.env
-   ```
-   Fill in `GOOGLE_CLIENT_ID=` and `GOOGLE_CLIENT_SECRET=`, save (Ctrl+O, Enter, Ctrl+X), then:
-   ```bash
-   sudo systemctl restart home-planner
-   ```
+6. Paste them into the planner's setup guide (or **Settings → Add a Google calendar**) and press **Save**.
 
 ### Part 2: Connect each Google account
 

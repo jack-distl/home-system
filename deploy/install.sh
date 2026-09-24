@@ -7,6 +7,10 @@
 # It installs Node.js, builds the planner, starts it on boot, and opens it full-screen on the touchscreen.
 set -euo pipefail
 
+# Everything is inside main() so nothing runs until the whole script has downloaded.
+main() {
+trap 'echo; echo "❌ Something went wrong (see the lines just above)."; echo "   Copy ALL the text in this window and paste it to Claude to get it fixed."' ERR
+
 REPO_URL="${REPO_URL:-https://github.com/jack-distl/home-system.git}"
 APP_DIR="${APP_DIR:-$HOME/home-system}"
 NODE_MAJOR=22
@@ -79,9 +83,15 @@ sudo raspi-config nonint do_boot_behaviour B4 || true
 
 cat <<DONE
 
-All done. The planner is running at http://localhost:3000
-From a phone on the same Wi-Fi: http://$(hostname).local:3000
+✅ All done!
 
-Next: reboot (sudo reboot) and it will open full-screen.
-Then connect your calendars — see docs/03-calendars.md.
+The Pi will now restart. This window will say the connection was closed — that's expected.
+In about a minute the touchscreen shows "Let's set up your planner".
+Then, on your laptop, open:  http://$(hostname).local:3000
+
 DONE
+sleep 10
+sudo reboot
+}
+
+main "$@"
