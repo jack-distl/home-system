@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/
+.env
+art/*
+!art/README.md
+*.log
